@@ -1,31 +1,471 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&display=swap');
+
 :root {
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: #f2f2f2;
-  background: #050607;
+  --font-main: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --bg-dark: #040608;
+  --text-pure: #ffffff;
+  --text-muted: rgba(255, 255, 255, 0.75);
+  --text-subtle: rgba(255, 255, 255, 0.45);
+  
+  --color-forum: #08a9dd;
+  --color-coral: #f7353f;
+  --color-magenta: #e96daa;
+  --color-amber: #ffb35a;
+  
+  --glass-bg: rgba(8, 12, 16, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.12);
+  --glass-glow: rgba(8, 169, 221, 0.18);
 }
 
-* { box-sizing: border-box; }
-html, body, #app { width: 100%; height: 100%; margin: 0; overflow: hidden; }
-body { background: #050607; }
-canvas { display: block; width: 100%; height: 100%; }
+* {
+  box-sizing: border-box;
+}
 
+html, body, #app {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background-color: var(--bg-dark);
+  font-family: var(--font-main);
+  color: var(--text-pure);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  z-index: 1;
+}
+
+/* ==========================================================================
+   IMÁGENES DE FONDO CON BAJA OPACIDAD PERSISTENTE
+   ========================================================================== */
+.slide-bg-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2; /* Sobre el lienzo y detrás de la UI de textos */
+  pointer-events: none;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bg-backdrop-img {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  filter: saturate(0.85) contrast(1.1) brightness(0.9);
+  transition: opacity 1.1s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 1.3s cubic-bezier(0.16, 1, 0.3, 1);
+  transform: scale(1.05);
+}
+
+.bg-backdrop-img.visible {
+  opacity: 0.18; /* Baja opacidad solicitada por el usuario */
+  transform: scale(1.0);
+}
+
+.bg-backdrop-overlay {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, transparent 35%, rgba(4, 6, 8, 0.85) 100%),
+              linear-gradient(180deg, rgba(4, 6, 8, 0.5) 0%, transparent 45%, rgba(4, 6, 8, 0.75) 100%);
+  pointer-events: none;
+}
+
+/* ==========================================================================
+   PRESENTATION STAGE OVERLAY
+   ========================================================================== */
+.presentation-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 36px 48px;
+  pointer-events: none;
+}
+
+/* 1. BRAND LOCKUP PERSISTENTE */
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  pointer-events: auto;
+  user-select: none;
+}
+
+.brand-logos {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 18px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-radius: 999px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+}
+
+.brand-logos .logo-forum {
+  height: 28px;
+  width: auto;
+  object-fit: contain;
+  filter: brightness(1.05);
+}
+
+.brand-logos .brand-separator {
+  width: 1px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.brand-logos .logo-90 {
+  height: 26px;
+  width: auto;
+  object-fit: contain;
+}
+
+.brand-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: rgba(8, 12, 16, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.meta-tag {
+  color: var(--color-forum);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.meta-dot {
+  opacity: 0.4;
+}
+
+/* 2. SLIDE STAGE CONTENT */
+.slide-stage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 0;
+}
+
+.slide-content-box {
+  width: 100%;
+  max-width: 1160px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+              filter 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: auto;
+}
+
+.slide-content-box.entering {
+  opacity: 0;
+  transform: translateY(18px) scale(0.985);
+  filter: blur(8px);
+}
+
+.slide-content-box.leaving {
+  opacity: 0;
+  transform: translateY(-14px) scale(0.99);
+  filter: blur(6px);
+}
+
+/* SLIDE TYPOGRAPHY */
+.slide-text-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  max-width: 1060px;
+}
+
+.slide-kicker {
+  display: inline-block;
+  margin-bottom: 18px;
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--color-forum);
+  text-shadow: 0 0 20px rgba(8, 169, 221, 0.4);
+}
+
+.slide-title {
+  margin: 0;
+  font-size: clamp(32px, 3.8vw, 54px);
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+  color: var(--text-pure);
+  text-wrap: balance;
+  text-shadow: 0 2px 30px rgba(0, 0, 0, 0.95);
+}
+
+.slide-subtitle {
+  margin: 20px 0 0 0;
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--text-muted);
+  max-width: 680px;
+}
+
+/* LAYOUT SPECIALIZATIONS */
+.layout-center-hero .slide-title {
+  font-size: clamp(34px, 4.2vw, 56px);
+  text-transform: uppercase;
+  letter-spacing: -0.01em;
+  background: linear-gradient(180deg, #ffffff 30%, rgba(255, 255, 255, 0.75) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.layout-center-hero .slide-subtitle {
+  margin-top: 24px;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--color-forum);
+  letter-spacing: 0.05em;
+}
+
+.layout-dual-harmony .slide-title {
+  font-size: clamp(40px, 4.8vw, 68px);
+  letter-spacing: -0.02em;
+}
+
+.layout-qr-close .slide-title {
+  color: var(--color-forum);
+}
+
+/* QR CARDS (Slide 13) */
+.slide-qr-group {
+  display: flex;
+  gap: 28px;
+  justify-content: center;
+  margin-top: 28px;
+}
+
+.qr-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 18px 24px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 20px;
+  backdrop-filter: blur(16px);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+  transition: transform 0.25s ease, border-color 0.25s ease;
+}
+
+.qr-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--color-forum);
+}
+
+.qr-img {
+  width: 140px;
+  height: 140px;
+  border-radius: 12px;
+  background: white;
+  padding: 8px;
+}
+
+.qr-label {
+  margin-top: 12px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text-pure);
+}
+
+/* ==========================================================================
+   3. NAVIGATION CONTROLS DOCK (PERSISTENTE)
+   ========================================================================== */
+.navigation-dock {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  pointer-events: auto;
+  user-select: none;
+}
+
+.nav-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  padding: 8px 16px;
+  border-radius: 999px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--text-pure);
+  padding: 10px 20px;
+  border-radius: 999px;
+  font-family: var(--font-main);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.nav-btn:hover:not(:disabled) {
+  background: var(--color-forum);
+  border-color: var(--color-forum);
+  color: #ffffff;
+  box-shadow: 0 0 20px rgba(8, 169, 221, 0.4);
+  transform: translateY(-1px);
+}
+
+.nav-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.nav-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.nav-tracker {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 8px;
+}
+
+.tracker-counter {
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.tracker-counter .current-num {
+  color: var(--color-forum);
+  font-size: 15px;
+}
+
+.tracker-counter .counter-divider {
+  opacity: 0.4;
+  margin: 0 2px;
+}
+
+.tracker-dots {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tracker-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.tracker-dot:hover {
+  background: rgba(255, 255, 255, 0.6);
+  transform: scale(1.3);
+}
+
+.tracker-dot.active {
+  background: var(--color-forum);
+  width: 22px;
+  box-shadow: 0 0 10px rgba(8, 169, 221, 0.6);
+}
+
+.tracker-dot.passed {
+  background: rgba(8, 169, 221, 0.45);
+}
+
+.nav-hint {
+  font-size: 11px;
+  color: var(--text-subtle);
+  background: rgba(8, 12, 16, 0.5);
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(8px);
+}
+
+.nav-hint kbd {
+  display: inline-block;
+  padding: 2px 6px;
+  font-family: monospace;
+  font-size: 10px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  color: #ffffff;
+}
+
+/* ==========================================================================
+   LAB PANEL & HUD
+   ========================================================================== */
 .panel {
   position: fixed;
   top: 14px;
-  left: 14px;
+  right: 14px;
   width: min(340px, calc(100vw - 28px));
   max-height: calc(100vh - 28px);
   overflow: auto;
   padding: 14px;
   border: 1px solid rgba(255,255,255,.16);
   border-radius: 12px;
-  background: rgba(8, 10, 12, .86);
-  backdrop-filter: blur(12px);
-  z-index: 10;
+  background: rgba(8, 10, 12, .88);
+  backdrop-filter: blur(16px);
+  z-index: 100;
 }
 
-.panel h1 { font-size: 16px; margin: 0 0 4px; }
-.panel h2 { font-size: 12px; margin: 16px 0 8px; text-transform: uppercase; letter-spacing: .08em; opacity: .72; }
+.panel h1 { font-size: 15px; margin: 0 0 4px; color: #fff; }
+.panel h2 { font-size: 11px; margin: 16px 0 8px; text-transform: uppercase; letter-spacing: .08em; opacity: .72; }
 .panel p, .panel li { font-size: 12px; line-height: 1.4; color: #c9cdd2; }
 .panel .row { margin: 8px 0; }
 .panel label { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
@@ -47,15 +487,24 @@ canvas { display: block; width: 100%; height: 100%; }
 
 .hud {
   position: fixed;
-  right: 14px;
+  left: 14px;
   bottom: 14px;
-  z-index: 9;
-  padding: 8px 10px;
-  border-radius: 9px;
+  z-index: 90;
+  padding: 6px 12px;
+  border-radius: 8px;
   background: rgba(8,10,12,.7);
+  border: 1px solid rgba(255,255,255,.08);
   font-size: 11px;
   color: #d8dce0;
-  line-height: 1.45;
   pointer-events: none;
 }
-.hud strong { color: white; }
+.hud strong { color: var(--color-forum); }
+
+@media (max-width: 960px) {
+  .presentation-overlay {
+    padding: 20px 24px;
+  }
+  .nav-hint {
+    display: none;
+  }
+}

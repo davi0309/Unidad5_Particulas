@@ -6,23 +6,11 @@ import './styles.css';
 import { createParameters } from './simulation/parameters.js';
 import { createSimulation } from './simulation/createSimulation.js';
 import { createLabPanel } from './ui/labPanel.js';
+import { createSlidePresenter } from './ui/slidePresenter.js';
+import { generateSlideShape } from './simulation/shapeGenerators.js';
 
-
-
-/*
-2^15: 32768
-2^16: 65536
-2^17: 131072
-2^18: 262144
-2^19: 524288
-2^20: 1048576
-2^21: 2097152
-2^22: 4194304
-2^23: 8388608
-2^24: 16777216
-*/
-
-const PARTICLE_COUNT = 131072; //2^17. Increase only after measuring performance.
+// Cantidad de partículas reducida a 8,192 (2^13) para lograr figuras nítidas, limpias y definidas
+const PARTICLE_COUNT = 8192;
 
 async function main() {
   const mount = document.querySelector('#app');
@@ -34,10 +22,10 @@ async function main() {
 
   // THREE.JS MENTAL MODEL: scene + camera + renderer ---------------------
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color('#050607');
+  scene.background = new THREE.Color('#040608');
 
   const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.05, 100);
-  camera.position.set(0, 0, 11);
+  camera.position.set(0, 0, 10.5);
 
   const renderer = new THREE.WebGPURenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -52,7 +40,11 @@ async function main() {
   const params = createParameters();
   const simulation = createSimulation({ renderer, scene, params, count: PARTICLE_COUNT });
 
-  // LAB HELPERS -----------------------------------------------------------
+  // Arreglos reutilizables para actualización de objetivos sin recolocar memoria
+  const posBuffer = new Float32Array(PARTICLE_COUNT * 3);
+  const colBuffer = new Float32Array(PARTICLE_COUNT * 3);
+
+  // LAB HELPERS (visibles solo en modo LAB con la tecla P) ----------------
   const attractorHelper = new THREE.Mesh(
     new THREE.SphereGeometry(0.12, 16, 12),
     new THREE.MeshBasicMaterial({ color: '#ffffff' })
@@ -61,36 +53,41 @@ async function main() {
   const axes = new THREE.AxesHelper(1.5);
   scene.add(axes);
 
-  // POINTER -> WORLD POSITION --------------------------------------------
-  // This is a useful camera concept: screen coordinates are not world coords.
-  const pointerNdc = new THREE.Vector2();
-  const raycaster = new THREE.Raycaster();
-  const interactionPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
-  const hit = new THREE.Vector3();
+  let paused = false;
+  let mode = 'PRESENTATION';
+  let currentSlideIndex = 0;
+  let slideTime = 0;
 
-  addEventListener('pointermove', (event) => {
-    pointerNdc.x = (event.clientX / innerWidth) * 2 - 1;
-    pointerNdc.y = -(event.clientY / innerHeight) * 2 + 1;
-    raycaster.setFromCamera(pointerNdc, camera);
-    if (raycaster.ray.intersectPlane(interactionPlane, hit)) {
-      params.attractor.value.copy(hit);
-      attractorHelper.position.copy(hit);
-    }
+  // 1. MANEJAR CAMBIO DE DIAPOSITIVA Y REGENERAR FORMA OBJETIVO ----------
+  function handleSlideChange(slide, prevSlide, index) {
+    currentSlideIndex = index;
+    slideTime = 0;
+
+    // Configurar parámetros físicos para movimiento suave y pausado
+    params.particleSize.value = slide.params.particleSize || 0.075;
+    params.springStrength.value = 2.8;
+    params.dragCoefficient.value = 1.35;
+    params.maxSpeed.value = 3.2;
+
+    // Generar la forma objetivo inicial del momento
+    generateSlideShape(currentSlideIndex, PARTICLE_COUNT, 0, posBuffer, colBuffer);
+    simulation.updateTargets(posBuffer, colBuffer);
+  }
+
+  // 2. INSTANCIAR CAPA DE PRESENTACIÓN ESCÉNICA --------------------------
+  const slidePresenter = createSlidePresenter({
+    onSlideChange: handleSlideChange
   });
 
-  let paused = false;
-  let mode = 'LAB';
-  let panel;
-  let savedRadialStrength = params.radialStrength.value;
-  let savedRadialEnabled = params.radialEnabled.value;
-
+  // 3. MODO LABORATORIO (TECLA P) ----------------------------------------
   const applyPreset = (id) => {
     params.windEnabled.value = 0;
     params.radialEnabled.value = 0;
     params.vortexEnabled.value = 0;
-    params.dragEnabled.value = 0;
-    params.wind.value.set(0, 0, 0);
+    params.dragEnabled.value = 1;
     params.initialSpeed.value = 0;
+    params.springStrength.value = 0; // En pruebas de laboratorio, desactivar resorte
+    params.dragCoefficient.value = 0.08;
 
     if (id === 'inertia') {
       params.initialSpeed.value = 0.8;
@@ -108,8 +105,6 @@ async function main() {
       params.radialStrength.value = 1.0;
       params.vortexEnabled.value = 1;
       params.vortexStrength.value = 3.0;
-      params.dragEnabled.value = 1;
-      params.dragCoefficient.value = 0.08;
     }
     simulation.reset();
     panel?.refresh();
@@ -117,58 +112,40 @@ async function main() {
 
   const setMode = (next) => {
     mode = next;
-    const lab = mode === 'LAB';
-    panel.setVisible(lab);
-    axes.visible = lab;
-    attractorHelper.visible = lab;
-    //orbit.enabled = lab;
-    hud.innerHTML = lab
-      ? '<strong>LAB</strong> · P: performance · R: reset · 1–5: pruebas'
-      //: '<strong>PERFORMANCE</strong> · P: lab · espacio: invertir radial · puntero: atractor';
-      : '';
+    const isLab = mode === 'LAB';
+    panel.setVisible(isLab);
+    axes.visible = isLab;
+    attractorHelper.visible = isLab;
+    hud.style.display = isLab ? 'block' : 'none';
+    slidePresenter.setLabMode(isLab);
+
+    if (!isLab) {
+      params.springStrength.value = 6.5;
+      const current = slidePresenter.getSlide(slidePresenter.getCurrentIndex());
+      if (current) handleSlideChange(current, null, slidePresenter.getCurrentIndex());
+    }
   };
 
-  panel = createLabPanel({
+  const panel = createLabPanel({
     params,
     onReset: () => simulation.reset(),
     onPreset: applyPreset,
-    onModeChange: () => setMode(mode === 'LAB' ? 'PERFORMANCE' : 'LAB'),
-    onPauseChange: () => paused = !paused
+    onModeChange: () => setMode(mode === 'LAB' ? 'PRESENTATION' : 'LAB'),
+    onPauseChange: () => (paused = !paused)
   });
 
   const hud = document.createElement('div');
   hud.className = 'hud';
+  hud.innerHTML = '<strong>LAB</strong> · P: presentación · R: reset · 1–5: pruebas';
   document.body.append(hud);
-  setMode('LAB');
 
-  // BASELINE LIVE INSTRUMENT MAPPING -------------------------------------
-  // Students are expected to redesign this mapping for their own instrument.
+  setMode('PRESENTATION');
+
+  // CONTROLES DE TECLADO --------------------------------------------------
   addEventListener('keydown', (event) => {
-    //console.log('radial inverted', params.radialStrength.value);
     if (event.repeat) return;
-    if (event.code === 'KeyP') setMode(mode === 'LAB' ? 'PERFORMANCE' : 'LAB');
-    if (event.code === 'KeyR') simulation.reset();
-    if (event.code === 'Digit1') applyPreset('inertia');
-    if (event.code === 'Digit2') applyPreset('wind');
-    if (event.code === 'Digit3') applyPreset('attract');
-    if (event.code === 'Digit4') applyPreset('repel');
-    if (event.code === 'Digit5') applyPreset('vortex');
-
-    if (event.code === 'Space') {
-      event.preventDefault();
-      //savedRadialStrength = params.radialStrength.value || 2.0;
-      savedRadialStrength = params.radialStrength.value;
-      savedRadialEnabled = params.radialEnabled.value;
-      params.radialEnabled.value = 1;
-      params.radialStrength.value = -(savedRadialStrength || 2.0);
-      //console.log('radial inverted', params.radialStrength.value);
-    }
-  });
-
-  addEventListener('keyup', (event) => {
-    if (event.code === 'Space') {
-      params.radialEnabled.value = savedRadialEnabled;
-      params.radialStrength.value = savedRadialStrength;
+    if (event.code === 'KeyP') {
+      setMode(mode === 'LAB' ? 'PRESENTATION' : 'LAB');
     }
   });
 
@@ -180,8 +157,23 @@ async function main() {
 
   simulation.reset();
 
-  // FRAME LOOP ------------------------------------------------------------
+  // FRAME ANIMATION LOOP --------------------------------------------------
+  const clock = new THREE.Clock();
+
   renderer.setAnimationLoop(() => {
+    const delta = Math.min(clock.getDelta(), 0.1);
+    params.dt.value = delta;
+
+    if (mode === 'PRESENTATION') {
+      // Evolución temporal pausada (55% de velocidad para movimiento cinematográfico)
+      slideTime += delta * 0.55;
+      params.time.value = slideTime;
+
+      // Actualizar dinámicas continuas para figuras vivas
+      generateSlideShape(currentSlideIndex, PARTICLE_COUNT, slideTime, posBuffer, colBuffer);
+      simulation.updateTargets(posBuffer, colBuffer);
+    }
+
     if (!paused) simulation.stepSimulation();
     orbit.update();
     renderer.render(scene, camera);
@@ -191,7 +183,7 @@ async function main() {
 main().catch((error) => {
   console.error(error);
   const pre = document.createElement('pre');
-  pre.style.cssText = 'position:fixed;inset:16px;white-space:pre-wrap;color:#fff;z-index:50';
+  pre.style.cssText = 'position:fixed;inset:16px;white-space:pre-wrap;color:#fff;z-index:500';
   pre.textContent = String(error?.stack || error);
   document.body.append(pre);
 });
